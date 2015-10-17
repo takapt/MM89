@@ -126,7 +126,7 @@ Timer g_timer;
 #ifdef LOCAL
 const double G_TL_SEC = 9.5;
 #else
-const double G_TL_SEC = 10 * 0.95;
+const double G_TL_SEC = 10 * 0.97;
 #endif
 
 
@@ -546,6 +546,9 @@ public:
 
         rep(depth, MAX_DEPTH - 1)
         {
+            if (g_timer.get_elapsed() > G_TL_SEC)
+                break;
+
             // TODO: 1手でcompleteするやつがあったらcompleteに追加?
             sort(all(states[depth]));
             if (states[depth].size() > BEAM_WIDTH)
@@ -620,6 +623,9 @@ public:
         int best_covers = init_covers;
         for (auto& state : complete_states)
         {
+            if (g_timer.get_elapsed() > G_TL_SEC)
+                break;
+
             auto& path = state.path;
             assert(path.size() >= 2);
 
@@ -687,7 +693,35 @@ END:
                 current_covers = next_covers;
             }
         }
-        return current_maze;
+        return use_up(current_maze);
+    }
+
+    Maze use_up(Maze maze) const
+    {
+        auto covered = maze.search_covered(borders);
+
+        int rem_changes = max_changes;
+        rep(y, h) rep(x, w)
+            if (maze.get(x, y) != start_maze.get(x, y))
+                --rem_changes;
+
+        for (auto& p : borders)
+        {
+            rep(dir, 4)
+            {
+                int x = p.x + DX[dir];
+                int y = p.y + DY[dir];
+                if (rem_changes > 0 && in_rect(x, y, w, h) && !maze.outside(x, y) && !covered.get(x, y))
+                {
+                    --rem_changes;
+                    maze.set(x, y, UTURN);
+                    covered.set(x, y, true);
+                }
+            }
+        }
+        assert(rem_changes >= 0);
+
+        return maze;
     }
 
 private:
