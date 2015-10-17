@@ -124,7 +124,8 @@ public:
 };
 Timer g_timer;
 #ifdef LOCAL
-const double G_TL_SEC = 9.5;
+// const double G_TL_SEC = 9.5;
+const double G_TL_SEC = 1e9;
 #else
 const double G_TL_SEC = 10 * 0.97;
 #endif
@@ -392,7 +393,6 @@ public:
     {
         BitBoard visited(w, h);
         BitBoard covered(w, h);
-        vector<Pos> path;
         for (auto& start : borders)
         {
             assert(border(start.x, start.y));
@@ -400,28 +400,24 @@ public:
             {
                 int nx = start.x + DX[dir], ny = start.y + DY[dir];
                 if (in_rect(nx, ny, w, h) && !outside(nx, ny))
-                    search(nx, ny, dir, path, visited, covered);
+                    search(nx, ny, dir, visited, covered);
             }
         }
         return covered;
     }
 
 private:
-    void search(int x, int y, int dir, vector<Pos>& path, BitBoard& visited, BitBoard& covered) const
+    bool search(int x, int y, int dir, BitBoard& visited, BitBoard& covered) const
     {
         assert(in_rect(x, y, w, h));
         assert(!visited.get(x, y));
 
         if (outside(x, y))
-        {
-            for (auto& p : path)
-                covered.set(p.x, p.y, true);
-            return;
-        }
+            return true;
 
         visited.set(x, y, true);
-        path.push_back(Pos(x, y));
 
+        bool any_exit = false;
         if (get(x, y) == EVERY)
         {
             rep(ndir, 4)
@@ -429,7 +425,7 @@ private:
                 int nx = x + DX[ndir], ny = y + DY[ndir];
                 assert(in_rect(nx, ny, w, h));
                 if (!visited.get(nx, ny))
-                    search(nx, ny, ndir, path, visited, covered);
+                    any_exit |= search(nx, ny, ndir, visited, covered);
             }
         }
         else
@@ -439,11 +435,15 @@ private:
             int nx = x + DX[ndir], ny = y + DY[ndir];
             assert(in_rect(nx, ny, w, h));
             if (!visited.get(nx, ny))
-                search(nx, ny, ndir, path, visited, covered);
+                any_exit |= search(nx, ny, ndir, visited, covered);
         }
 
         visited.set(x, y, false);
-        path.pop_back();
+
+        if (any_exit)
+            covered.set(x, y, true);
+
+        return any_exit;
     }
 
     int w, h;
@@ -676,8 +676,8 @@ END:
 
 #ifdef LOCAL
         for (int try_i = 0;
-//                 try_i < 100;
-                g_timer.get_elapsed() < G_TL_SEC;
+                try_i < 100;
+//                 g_timer.get_elapsed() < G_TL_SEC;
                 ++try_i)
 #else
         while (g_timer.get_elapsed() < G_TL_SEC)
