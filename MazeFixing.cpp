@@ -523,12 +523,10 @@ public:
         };
 
         const Pos start_pos = borders[g_rand.next_int(borders.size())];
-//         const Pos start_pos = borders[0];
 
         const int BEAM_WIDTH = 100;
-        const int COEF_DEPTH = 2;
+        const int COEF_DEPTH = 4;
         const int MAX_DEPTH = COEF_DEPTH * max(init_maze.width(), init_maze.height());
-//         vector<State> states[MAX_DEPTH];
         static vector<State> states[COEF_DEPTH * 80 + 10];
         rep(i, MAX_DEPTH)
             states[i].clear();
@@ -539,7 +537,7 @@ public:
             int ny = start_pos.y + DY[dir];
             if (in_rect(nx, ny, w, h) && !init_maze.outside(nx, ny))
             {
-                states[1].push_back(State{dir, !init_covered.get(nx, ny), 0, 0, 0, 0, {Pos(nx, ny)}});
+                states[0].push_back(State{dir, !init_covered.get(nx, ny), 0, 0, 0, 0, {Pos(nx, ny)}});
             }
         }
 
@@ -573,7 +571,6 @@ public:
                 }
 
 
-//                 rep(ndir, 4)
                 for (int ndir : dirs)
                 {
                     const int nx = cur_x + DX[ndir];
@@ -584,7 +581,6 @@ public:
                     {
                         if (state.new_covers >= 2)
                         {
-//                             State nstate = state;
                             State nstate = ndir == dirs.back() ? move(state) : state;
                             nstate.path.push_back(Pos(nx, ny));
                             complete_states.push_back(nstate);
@@ -592,12 +588,10 @@ public:
                         continue;
                     }
 
-//                     if (find(rall(path), Pos(nx, ny)) == path.rend())
                     {
                         int cell_to = (ndir - state.dir + 4) % 4;
                         bool need_change = init_maze.get(cur_x, cur_y) != EVERY && cell_to != init_maze.get(cur_x, cur_y);
 
-//                         State nstate = state;
                         State nstate = ndir == dirs.back() ? move(state) : state;
                         nstate.path.push_back(Pos(nx, ny));
                         nstate.dir = ndir;
@@ -621,9 +615,6 @@ public:
                 }
             }
         }
-//         rep(i, MAX_DEPTH)
-//             dump(states[i].size());
-//         cerr << endl;
 
         Maze best_maze = init_maze;
         int best_covers = init_covers;
@@ -678,8 +669,10 @@ END:
         int current_covers = current_covered.count();
 
 #ifdef LOCAL
-        for (int try_i = 0; try_i < 100; ++try_i)
-//         while (g_timer.get_elapsed() < G_TL_SEC)
+        for (int try_i = 0;
+//                 try_i < 100;
+                g_timer.get_elapsed() < G_TL_SEC;
+                ++try_i)
 #else
         while (g_timer.get_elapsed() < G_TL_SEC)
 #endif
