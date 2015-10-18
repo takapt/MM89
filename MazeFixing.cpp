@@ -124,8 +124,8 @@ public:
 };
 Timer g_timer;
 #ifdef LOCAL
-// const double G_TL_SEC = 9.5;
-const double G_TL_SEC = 1e9;
+const double G_TL_SEC = 9.5;
+// const double G_TL_SEC = 1e9;
 #else
 const double G_TL_SEC = 10 * 0.97;
 #endif
@@ -524,10 +524,13 @@ public:
 
         const Pos start_pos = borders[g_rand.next_int(borders.size())];
 
-        const int BEAM_WIDTH = 100;
-        const int COEF_DEPTH = 4;
+
+        const int MAX_COEF_DEPTH = 4;
+
+        const int BEAM_WIDTH = 50;
+        const int COEF_DEPTH = g_timer.get_elapsed() < G_TL_SEC * 0.5 ? 4 : 2;
         const int MAX_DEPTH = COEF_DEPTH * max(init_maze.width(), init_maze.height());
-        static vector<State> states[COEF_DEPTH * 80 + 10];
+        static vector<State> states[MAX_COEF_DEPTH * 80 + 10];
         rep(i, MAX_DEPTH)
             states[i].clear();
 
@@ -582,7 +585,7 @@ public:
 
                     if (init_maze.outside(nx, ny))
                     {
-                        if (state.new_covers >= 2)
+                        if (state.new_covers >= 1)
                         {
                             State nstate = ndir == dirs.back() ? move(state) : state;
                             nstate.path.push_back(Pos(nx, ny));
@@ -676,8 +679,8 @@ END:
 
 #ifdef LOCAL
         for (int try_i = 0;
-                try_i < 100;
-//                 g_timer.get_elapsed() < G_TL_SEC;
+//                 try_i < 100;
+                g_timer.get_elapsed() < G_TL_SEC;
                 ++try_i)
 #else
         while (g_timer.get_elapsed() < G_TL_SEC)
