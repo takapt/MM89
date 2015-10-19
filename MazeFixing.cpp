@@ -506,12 +506,12 @@ public:
 
             vector<Pos> path;
 
-            double eval() const
+            int eval() const
             {
-                double score = 0;
+                int score = 0;
                 score += new_covers;
-                score += change_to_orig;
-                score -= orig_to_change;
+//                 score += change_to_orig;
+                score -= 2 * orig_to_change;
                 score -= 2 * change_to_change;
                 return score;
             }
@@ -612,6 +612,8 @@ public:
                         {
                             if (cell_to == start_maze.get(cur_x, cur_y))
                                 ++nstate.change_to_orig;
+                            else if (init_maze.get(cur_x, cur_y) == start_maze.get(cur_x, cur_y))
+                                ++nstate.orig_to_change;
                             else
                                 ++nstate.change_to_change;
                         }
