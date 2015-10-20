@@ -124,8 +124,12 @@ public:
 };
 Timer g_timer;
 #ifdef LOCAL
+#define USE_TIMER
+#ifdef USE_TIMER
 const double G_TL_SEC = 9.5;
-// const double G_TL_SEC = 1e9;
+#else
+const double G_TL_SEC = 1e9;
+#endif
 #else
 const double G_TL_SEC = 10 * 0.97;
 #endif
@@ -680,9 +684,20 @@ END:
         int current_covers = current_covered.count();
 
 #ifdef LOCAL
-        for (int try_i = 0;
-//                 try_i < 100;
+#ifdef USE_TIMER
+        const int MAX_TRIES = 114514;
+#else
+        const int MAX_TRIES = 100;
+#endif
+
+        int updates = 0;
+        int try_i;
+        for (try_i = 0;
+#ifdef USE_TIMER
                 g_timer.get_elapsed() < G_TL_SEC;
+#else
+                try_i < MAX_TRIES;
+#endif
                 ++try_i)
 #else
         while (g_timer.get_elapsed() < G_TL_SEC)
@@ -693,11 +708,14 @@ END:
             int next_covers = next_coverd.count();
             if (next_covers != current_covers)
             {
-//                 fprintf(stderr, "%4d: %4d -> %4d\n", try_i, current_covers, next_covers);
+                fprintf(stderr, "%4d (%4.2f): %4d -> %4d\n", try_i, g_timer.get_elapsed(), current_covers, next_covers);
                 current_covered = next_coverd;
                 current_covers = next_covers;
+                ++updates;
             }
         }
+        dump(try_i);
+        dump((double)updates / try_i);
         return use_up(current_maze);
     }
 
