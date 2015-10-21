@@ -54,10 +54,11 @@ def get_s(result):
 
 
 
-n = 500
+n = 200
 # random.seed(810)
 # seeds = [random.randint(100, 10**9) for _ in range(n)]
-seeds = list(range(1, n + 1))
+# seeds = list(range(1, n + 1))
+seeds = list(range(100, 100 + n + 1))
 
 lock = Lock()
 done_seeds = 0
@@ -86,7 +87,7 @@ def total(results):
     return {'seed': -1, 'score': sum_score / len(results), 'time': sum_time}
 
 def multi(seeds):
-    pool = ThreadPool(6)
+    pool = ThreadPool(5)
     results = pool.map(run, seeds)
     for result in results:
         print(get_s(result))
