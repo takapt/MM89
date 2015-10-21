@@ -454,6 +454,100 @@ private:
     int a[80][80];
 };
 
+
+#ifdef LOCAL
+#include "cairo.h"
+
+void gao(const Maze& maze, const Maze& start_maze)
+{
+    const auto borders = maze.list_borders();
+    const auto covered = maze.search_covered(borders);
+
+    const int CELL_SIZE = 30;
+    const int OFFSET = 5;
+    const int w = maze.width(), h = maze.height();
+    const int surface_w = w * CELL_SIZE + 2 * OFFSET;
+    const int surface_h = h * CELL_SIZE + 2 * OFFSET;
+
+    cairo_surface_t* surface = cairo_image_surface_create(CAIRO_FORMAT_RGB24, surface_w, surface_h);
+    cairo_t* cr = cairo_create(surface);
+
+    cairo_set_source_rgb(cr, 1, 1, 1);
+    cairo_rectangle(cr, 0, 0, surface_w, surface_h);
+    cairo_fill(cr);
+
+    rep(y, h) rep(x, w)
+    {
+        if (!maze.outside(x, y))
+        {
+            double r = 1, g = 1, b = 1;
+            if (covered.get(x, y))
+                r = g = b = 0.8;
+            if (maze.get(x, y) != start_maze.get(x, y))
+            {
+                g -= 0.25;
+                b -= 0.25;
+            }
+            cairo_set_source_rgb(cr, r, g, b);
+            cairo_rectangle(cr, OFFSET + x * CELL_SIZE, OFFSET + y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+            cairo_fill(cr);
+        }
+    }
+
+    rep(y, h + 1)
+    {
+        cairo_move_to(cr, OFFSET + 0, OFFSET + y * CELL_SIZE);
+        cairo_line_to(cr, OFFSET + w * CELL_SIZE, OFFSET + y * CELL_SIZE);
+    }
+    rep(x, w + 1)
+    {
+        cairo_move_to(cr, OFFSET + x * CELL_SIZE, OFFSET + 0);
+        cairo_line_to(cr, OFFSET + x * CELL_SIZE, OFFSET + h * CELL_SIZE);
+    }
+    cairo_set_source_rgb(cr, 0, 0, 0);
+    cairo_set_line_width(cr, 2);
+    cairo_stroke(cr);
+
+    rep(y, h) for (int x = 1; x < w; ++x)
+    {
+        if (maze.outside(x - 1, y) != maze.outside(x, y))
+        {
+            cairo_move_to(cr, OFFSET + x * CELL_SIZE, OFFSET + y * CELL_SIZE);
+            cairo_line_to(cr, OFFSET + x * CELL_SIZE, OFFSET + (y + 1) * CELL_SIZE);
+        }
+    }
+    rep(x, w) for (int y = 1; y < h; ++y)
+    {
+        if (maze.outside(x, y - 1) != maze.outside(x, y))
+        {
+            cairo_move_to(cr, OFFSET + x * CELL_SIZE, OFFSET + y * CELL_SIZE);
+            cairo_line_to(cr, OFFSET + (x + 1) * CELL_SIZE, OFFSET + y * CELL_SIZE);
+        }
+    }
+    cairo_set_line_width(cr, 4);
+    cairo_stroke(cr);
+
+
+    cairo_set_source_rgb(cr, 0, 0, 0);
+    cairo_set_font_size(cr, CELL_SIZE * 0.7);
+    rep(y, h) rep(x, w)
+    {
+        if (!maze.outside(x, y))
+        {
+            cairo_move_to(cr, OFFSET + x * CELL_SIZE + 0.2 * CELL_SIZE, OFFSET + (y + 1) * CELL_SIZE - 0.2 * CELL_SIZE);
+            char buf[] = {to_char(maze.get(x, y)), '\0'};
+            cairo_show_text(cr, buf);
+        }
+    }
+
+
+    cairo_surface_write_to_png(surface, "image.png");
+
+    cairo_destroy(cr);
+    cairo_surface_destroy(surface);
+}
+#endif
+
 class Solver
 {
 public:
@@ -708,10 +802,13 @@ END:
             int next_covers = next_coverd.count();
             if (next_covers != current_covers)
             {
-                fprintf(stderr, "%4d (%4.2f): %4d -> %4d\n", try_i, g_timer.get_elapsed(), current_covers, next_covers);
+//                 fprintf(stderr, "%4d (%4.2f): %4d -> %4d\n", try_i, g_timer.get_elapsed(), current_covers, next_covers);
                 current_covered = next_coverd;
                 current_covers = next_covers;
                 ++updates;
+
+//                 gao(current_maze, start_maze);
+//                 return current_maze;
             }
         }
         dump(try_i);
