@@ -455,6 +455,7 @@ private:
 };
 
 
+#define VIS
 #ifdef VIS
 #include "cairo.h"
 
@@ -807,8 +808,8 @@ END:
                 current_covers = next_covers;
                 ++updates;
 
-//                 gao(current_maze, start_maze);
-//                 return current_maze;
+                gao(current_maze, start_maze);
+                return current_maze;
             }
         }
         dump(try_i);
