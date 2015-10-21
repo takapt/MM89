@@ -455,7 +455,7 @@ private:
 };
 
 
-#ifdef LOCAL
+#ifdef VIS
 #include "cairo.h"
 
 void gao(const Maze& maze, const Maze& start_maze)
