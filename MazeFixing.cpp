@@ -346,6 +346,7 @@ public:
         rep(y, h) rep(x, w)
             set(x, y, to_dir_diff(maze[y][x]));
     }
+    Maze(){}
 
     int width() const { return w; }
     int height() const { return h; }
@@ -455,11 +456,30 @@ private:
 };
 
 
+#ifdef LOCAL
+int test_case_seed;
+
 #define VIS
 #ifdef VIS
+#include <sys/stat.h>
 #include "cairo.h"
 
-void gao(const Maze& maze, const Maze& start_maze)
+string get_dir_path(string filepath)
+{
+    assert(filepath.size() > 0);
+    while (filepath[filepath.size() - 1] != '/')
+        filepath.erase(filepath.begin() + (filepath.size() - 1));
+    return filepath;
+}
+
+string make_filename(int index)
+{
+    char filename[256];
+    sprintf(filename, "image/%d/%d.png", test_case_seed, index);
+    return filename;
+}
+
+void save_image(const string& filename, const Maze& maze, const Maze& start_maze, const vector<vector<Pos>>& paths)
 {
     const auto borders = maze.list_borders();
     const auto covered = maze.search_covered(borders);
@@ -528,6 +548,21 @@ void gao(const Maze& maze, const Maze& start_maze)
     cairo_set_line_width(cr, 4);
     cairo_stroke(cr);
 
+    for (auto& path : paths)
+    {
+        assert(path.size() >= 3);
+
+        cairo_rectangle(cr, OFFSET + path[0].x * CELL_SIZE + CELL_SIZE * 0.4, OFFSET + path[0].y * CELL_SIZE + CELL_SIZE * 0.4, 0.2 * CELL_SIZE, 0.2 * CELL_SIZE);
+        rep(i, (int)path.size() - 1)
+        {
+            int x = path[i].x, y = path[i].y;
+            int nx = path[i + 1].x, ny = path[i + 1].y;
+            cairo_move_to(cr, OFFSET + x * CELL_SIZE + 0.5 * CELL_SIZE, OFFSET + y * CELL_SIZE + 0.5 * CELL_SIZE);
+            cairo_line_to(cr, OFFSET + nx * CELL_SIZE + 0.5 * CELL_SIZE, OFFSET + ny * CELL_SIZE + 0.5 * CELL_SIZE);
+        }
+        cairo_set_line_width(cr, 2);
+        cairo_stroke(cr);
+    }
 
     cairo_set_source_rgb(cr, 0, 0, 0);
     cairo_set_font_size(cr, CELL_SIZE * 0.7);
@@ -535,18 +570,20 @@ void gao(const Maze& maze, const Maze& start_maze)
     {
         if (!maze.outside(x, y))
         {
-            cairo_move_to(cr, OFFSET + x * CELL_SIZE + 0.2 * CELL_SIZE, OFFSET + (y + 1) * CELL_SIZE - 0.2 * CELL_SIZE);
+            cairo_move_to(cr, OFFSET + x * CELL_SIZE + 0.25 * CELL_SIZE, OFFSET + (y + 1) * CELL_SIZE - 0.2 * CELL_SIZE);
             char buf[] = {to_char(maze.get(x, y)), '\0'};
             cairo_show_text(cr, buf);
         }
     }
 
 
-    cairo_surface_write_to_png(surface, "image.png");
+    mkdir(get_dir_path(filename).c_str(), 0777);
+    cairo_surface_write_to_png(surface, filename.c_str());
 
     cairo_destroy(cr);
     cairo_surface_destroy(surface);
 }
+#endif
 #endif
 
 class Solver
@@ -582,7 +619,39 @@ public:
         }
     }
 
-    Maze search_new_path(const Maze& init_maze) const
+    struct State
+    {
+        int dir;
+
+        int new_covers;
+        int orig_to_change;
+        int change_to_change;
+        int change_to_orig;
+        int everys;
+
+        vector<Pos> path;
+
+        int eval() const
+        {
+            int score = 0;
+            score += new_covers;
+            //                 score += change_to_orig;
+            score -= 2 * orig_to_change;
+            score -= 2 * change_to_change;
+            return score;
+        }
+
+        bool operator<(const State& other) const
+        {
+            return eval() > other.eval();
+        }
+    };
+    struct SearchNewPathResult
+    {
+        Maze maze;
+        State state;
+    };
+    SearchNewPathResult search_new_path(const Maze& init_maze) const
     {
         const auto init_covered = init_maze.search_covered(borders);
         const int init_covers = init_covered.count();
@@ -593,33 +662,6 @@ public:
                 ++init_changes;
         }
 
-        struct State
-        {
-            int dir;
-
-            int new_covers;
-            int orig_to_change;
-            int change_to_change;
-            int change_to_orig;
-            int everys;
-
-            vector<Pos> path;
-
-            int eval() const
-            {
-                int score = 0;
-                score += new_covers;
-//                 score += change_to_orig;
-                score -= 2 * orig_to_change;
-                score -= 2 * change_to_change;
-                return score;
-            }
-
-            bool operator<(const State& other) const
-            {
-                return eval() > other.eval();
-            }
-        };
 
         const Pos start_pos = borders[g_rand.next_int(borders.size())];
 
@@ -651,7 +693,6 @@ public:
             if (g_timer.get_elapsed() > G_TL_SEC)
                 break;
 
-            // TODO: 1手でcompleteするやつがあったらcompleteに追加?
             sort(all(states[depth]));
             if (states[depth].size() > BEAM_WIDTH)
                 states[depth].erase(states[depth].begin() + BEAM_WIDTH, states[depth].end());
@@ -723,7 +764,8 @@ public:
             }
         }
 
-        Maze best_maze = init_maze;
+//         Maze best_maze = init_maze;
+        SearchNewPathResult best_result;
         int best_covers = init_covers;
         for (auto& state : complete_states)
         {
@@ -765,15 +807,23 @@ END:
                 if (covers > best_covers)
                 {
                     best_covers = covers;
-                    best_maze = maze;
+                    best_result.maze = maze;
+                    best_result.state = state;
                 }
             }
         }
-        return best_maze;
+
+        // TODO: fix
+        best_result.state.path.insert(best_result.state.path.begin(), start_pos);
+        return best_result;
     }
 
     Maze solve()
     {
+#ifdef VIS
+        save_image(make_filename(-1), start_maze, start_maze, {});
+#endif
+
         Maze current_maze = start_maze;
         BitBoard current_covered = start_maze.search_covered(borders);
         int current_covers = current_covered.count();
@@ -798,18 +848,22 @@ END:
         while (g_timer.get_elapsed() < G_TL_SEC)
 #endif
         {
-            current_maze = search_new_path(current_maze);
-            auto next_coverd = current_maze.search_covered(borders);
+//             current_maze = search_new_path(current_maze);
+            SearchNewPathResult result = search_new_path(current_maze);
+            auto& next_maze = result.maze;
+            auto next_coverd = next_maze.search_covered(borders);
             int next_covers = next_coverd.count();
-            if (next_covers != current_covers)
+            if (next_covers > current_covers)
             {
 //                 fprintf(stderr, "%4d (%4.2f): %4d -> %4d\n", try_i, g_timer.get_elapsed(), current_covers, next_covers);
+                current_maze = next_maze;
                 current_covered = next_coverd;
                 current_covers = next_covers;
                 ++updates;
 
-                gao(current_maze, start_maze);
-                return current_maze;
+#ifdef VIS
+                save_image(make_filename(try_i), next_maze, start_maze, {result.state.path});
+#endif
             }
         }
         dump(try_i);
@@ -911,6 +965,8 @@ void gen_input()
 }
 int main()
 {
+    cin >> test_case_seed;
+
     int h;
     cin >> h;
     vector<string> maze(h);

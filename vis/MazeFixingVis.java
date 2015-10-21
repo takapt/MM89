@@ -34,9 +34,11 @@ public class MazeFixingVis {
     int W,H,F,N;
 
     char[][] orig_M;
+    String seed;
     
     // -----------------------------------------
     void generate(String seed) {
+        this.seed = seed;
       try {
         //generate the maze
         SecureRandom r1 = SecureRandom.getInstance("SHA1PRNG");
@@ -307,6 +309,9 @@ public class MazeFixingVis {
         int i;
         //imitate passing params to 'scan'
         StringBuffer sb = new StringBuffer();
+
+        sb.append(seed).append('\n');
+
         sb.append(maze.length).append('\n');
         for (i=0; i<maze.length; i++)
             sb.append(maze[i]).append('\n');
