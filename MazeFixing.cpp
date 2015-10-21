@@ -459,7 +459,7 @@ private:
 #ifdef LOCAL
 int test_case_seed;
 
-#define VIS
+// #define VIS
 #ifdef VIS
 #include <sys/stat.h>
 #include "cairo.h"
@@ -948,6 +948,8 @@ public:
 #ifdef LOCAL
 void gen_input()
 {
+    int seed;
+    cin >> seed;
     int h;
     cin >> h;
     vector<string> maze(h);
@@ -956,6 +958,7 @@ void gen_input()
     cin >> f;
 
     ofstream os("input");
+    os << seed << endl;
     os << h << endl;
     for (auto& s : maze)
         os << s << endl;
