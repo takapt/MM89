@@ -311,15 +311,15 @@ char to_char(int dir_diff)
     return CELL_STR[dir_diff];
 }
 
-class BitBoard
+class BoolBoard
 {
 public:
-    BitBoard(int w, int h) :
-        w(w), h(h)
+    BoolBoard(int w, int h) :
+        w(w), h(h), f{}
     {
     }
 
-    BitBoard(){}
+    BoolBoard(){}
 
     bool get(int x, int y) const
     {
@@ -336,14 +336,17 @@ public:
     int count() const
     {
         int c = 0;
-        rep(y, h)
-            c += f[y].count();
+//         rep(y, h)
+//             c += f[y].count();
+        rep(y, h) rep(x, w)
+            c += f[y][x];
         return c;
     }
 
 private:
     int w, h;
-    bitset<80> f[80];
+//     bitset<80> f[80];
+    bool f[80][80];
 };
 
 class Maze
@@ -403,10 +406,10 @@ public:
         return borders;
     }
 
-    BitBoard search_covered(const vector<Pos>& borders) const
+    BoolBoard search_covered(const vector<Pos>& borders) const
     {
-        BitBoard visited(w, h);
-        BitBoard covered(w, h);
+        BoolBoard visited(w, h);
+        BoolBoard covered(w, h);
         for (auto& start : borders)
         {
             assert(border(start.x, start.y));
@@ -421,7 +424,7 @@ public:
     }
 
 private:
-    bool search(int x, int y, int dir, BitBoard& visited, BitBoard& covered) const
+    bool search(int x, int y, int dir, BoolBoard& visited, BoolBoard& covered) const
     {
         assert(in_rect(x, y, w, h));
         assert(!visited.get(x, y));
@@ -771,7 +774,7 @@ public:
                 const int cur_x = state.pos.x;
                 const int cur_y = state.pos.y;
 
-                static BitBoard on_path(80, 80);
+                static BoolBoard on_path(80, 80);
                 static vector<Pos> rev_path;
                 state.make_rev_path(rev_path);
                 for (auto& p : rev_path)
@@ -897,7 +900,7 @@ END:
 #endif
 
 //         Maze current_maze = start_maze;
-//         BitBoard current_covered = start_maze.search_covered(borders);
+//         BoolBoard current_covered = start_maze.search_covered(borders);
 //         int current_covers = current_covered.count();
 
         const int MAX_MAZES = min(16, 2 * 80 * 80 / (w * h));
@@ -909,7 +912,6 @@ END:
 #endif
 
         double last_halving_progress = 0;
-        int updates = 0;
         int try_i;
         for (try_i = 0;
 #ifdef USE_TIMER
@@ -931,7 +933,7 @@ END:
                 rep(i, current_mazes.size())
                     order.push_back(make_pair(current_mazes[i].search_covered(borders).count(), i));
                 sort(rall(order));
-                dump(order);
+//                 dump(order);
 
                 const int take = current_mazes.size() / 2;
                 vector<Maze> next_mazes(take);
@@ -941,7 +943,7 @@ END:
 
                 last_halving_progress = progress;
 
-                dump(current_mazes.size());
+//                 dump(current_mazes.size());
             }
 
             for (auto& current_maze : current_mazes)
@@ -958,7 +960,6 @@ END:
             }
         }
         dump(try_i);
-        dump((double)updates / try_i);
 
         int best_covers = -1;
         Maze best_maze;
@@ -1037,7 +1038,7 @@ public:
 
         fprintf(stderr, "time: %.3f\n", g_timer.get_elapsed());
 
-        dump(sum / g_timer.get_elapsed());
+//         dump(sum / g_timer.get_elapsed());
 
         return res;
     }
