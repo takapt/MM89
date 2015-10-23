@@ -642,6 +642,7 @@ public:
         int change_to_change;
         int change_to_orig;
         int everys;
+        int cover_breaks;
 
         Pos pos;
         State* prev;
@@ -653,6 +654,7 @@ public:
             change_to_change(change_to_change),
             change_to_orig(change_to_orig),
             everys(everys),
+            cover_breaks(0),
             pos(pos),
             prev(prev)
         {
@@ -736,7 +738,9 @@ public:
 
         const int MAX_COEF_DEPTH = 4;
 
-        const int BEAM_WIDTH = 50;
+        const bool USE_BREAK = max_changes >= 810;
+
+        const int BEAM_WIDTH = USE_BREAK ? 10 : 50;
         const double COEF_DEPTH = 4 * (1 - progress);
         const int MAX_DEPTH = COEF_DEPTH * (init_maze.width() + init_maze.height()) / 2;
         static vector<State> states[MAX_COEF_DEPTH * 80 + 10];
@@ -762,7 +766,11 @@ public:
             int score = 0;
             score += 100 * state.new_covers;
             score -= 200 * state.orig_to_change;
-            score -= 200 * state.change_to_change;
+
+            if (USE_BREAK)
+                score -= 200 * state.cover_breaks;// * (1 - progress);
+            else
+                score -= 200 * state.change_to_change;
             return score;
         };
 
@@ -835,6 +843,9 @@ public:
                                 ++nstate.orig_to_change;
                             else
                                 ++nstate.change_to_change;
+
+                            if (init_covered.get(cur_x, cur_y))
+                                ++nstate.cover_breaks;
                         }
 
                         nstate.score = eval(nstate);
