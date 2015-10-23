@@ -124,14 +124,15 @@ public:
 };
 Timer g_timer;
 #ifdef LOCAL
-// #define USE_TIMER
+#define USE_TIMER
 #ifdef USE_TIMER
 const double G_TL_SEC = 9.5;
 #else
 const double G_TL_SEC = 1e9;
 #endif
 #else
-const double G_TL_SEC = 10 * 0.97;
+#define USE_TIMER
+const double G_TL_SEC = 9.8;
 #endif
 
 
@@ -222,6 +223,7 @@ struct Pos
                 return dir;
         }
         assert(false);
+        return -1;
     }
 
     uint pack() const
@@ -325,7 +327,7 @@ public:
         return f[y][x];
     }
 
-    bool set(int x, int y, bool v)
+    void set(int x, int y, bool v)
     {
         assert(in_rect(x, y, w, h));
         f[y][x] = v;
@@ -769,11 +771,11 @@ public:
                 const int cur_x = state.pos.x;
                 const int cur_y = state.pos.y;
 
-//                 static BitBoard on_path(80, 80);
-//                 static vector<Pos> rev_path;
-//                 state.make_rev_path(rev_path);
-//                 for (auto& p : rev_path)
-//                     on_path.set(p.x, p.y, true);
+                static BitBoard on_path(80, 80);
+                static vector<Pos> rev_path;
+                state.make_rev_path(rev_path);
+                for (auto& p : rev_path)
+                    on_path.set(p.x, p.y, true);
 
                 static vector<int> dirs;
                 dirs.clear();
@@ -782,7 +784,7 @@ public:
                     const int nx = cur_x + DX[ndir];
                     const int ny = cur_y + DY[ndir];
                     if (((state.dir - ndir + 4) % 4 != 2 && dist_to_outside[ny][nx] <= MAX_DEPTH - depth - 1) &&
-                            init_maze.outside(nx, ny))// || !on_path.get(nx, ny))//!state.on_path(Pos(nx, ny)))
+                            (init_maze.outside(nx, ny) || !on_path.get(nx, ny)))
                     {
                         dirs.push_back(ndir);
                     }
@@ -826,8 +828,8 @@ public:
                         states[depth + 1].push_back(nstate);
                     }
                 }
-//                 for (auto& p : rev_path)
-//                     on_path.set(p.x, p.y, false);
+                for (auto& p : rev_path)
+                    on_path.set(p.x, p.y, false);
             }
         }
 
@@ -873,7 +875,6 @@ END:
 
             if (changes <= max_changes)
             {
-                double score = state.eval();
                 if (covers > best_covers)
                 {
                     best_covers = covers;
@@ -902,11 +903,9 @@ END:
         const int MAX_MAZES = min(16, 2 * 80 * 80 / (w * h));
         vector<Maze> current_mazes(MAX_MAZES, start_maze);
 
-#ifdef LOCAL
-#ifdef USE_TIMER
-        const int MAX_TRIES = 114514;
-#else
-        const int MAX_TRIES = 10;
+
+#ifndef USE_TIMER
+        const int MAX_TRIES = 50;
 #endif
 
         double last_halving_progress = 0;
@@ -919,9 +918,6 @@ END:
                 try_i < MAX_TRIES;
 #endif
                 ++try_i)
-#else
-        while (g_timer.get_elapsed() < G_TL_SEC)
-#endif
         {
 #ifdef USE_TIMER
             double progress = g_timer.get_elapsed() / G_TL_SEC;
@@ -960,41 +956,6 @@ END:
                     current_maze = next_maze;
                 }
             }
-
-//             current_maze = search_new_path(current_maze);
-//             SearchNewPathResult result = search_new_path(current_maze);
-//             auto& next_maze = result.maze;
-//             auto next_coverd = next_maze.search_covered(borders);
-//             int next_covers = next_coverd.count();
-//             if (next_covers > current_covers)
-//             {
-// //                 fprintf(stderr, "%4d (%4.2f): %4d -> %4d\n", try_i, g_timer.get_elapsed(), current_covers, next_covers);
-//                 current_maze = next_maze;
-//                 current_covered = next_coverd;
-//                 current_covers = next_covers;
-//                 ++updates;
-//
-// #ifdef VIS
-//                 save_image(make_filename(try_i), next_maze, start_maze, {result.state.path});
-// #endif
-//             }
-//             current_maze = search_new_path(current_maze);
-//             SearchNewPathResult result = search_new_path(current_maze);
-//             auto& next_maze = result.maze;
-//             auto next_coverd = next_maze.search_covered(borders);
-//             int next_covers = next_coverd.count();
-//             if (next_covers > current_covers)
-//             {
-// //                 fprintf(stderr, "%4d (%4.2f): %4d -> %4d\n", try_i, g_timer.get_elapsed(), current_covers, next_covers);
-//                 current_maze = next_maze;
-//                 current_covered = next_coverd;
-//                 current_covers = next_covers;
-//                 ++updates;
-//
-// #ifdef VIS
-//                 save_image(make_filename(try_i), next_maze, start_maze, {result.state.path});
-// #endif
-//             }
         }
         dump(try_i);
         dump((double)updates / try_i);
