@@ -718,6 +718,8 @@ public:
     {
         Maze maze;
         State state;
+        int changes;
+        vector<Pos> path;
     };
     SearchNewPathResult search_new_path(const Maze& init_maze) const
     {
@@ -730,10 +732,12 @@ public:
                 ++init_changes;
         }
 
+        const double progress = g_timer.get_elapsed() / G_TL_SEC;
+
         const int MAX_COEF_DEPTH = 4;
 
         const int BEAM_WIDTH = 50;
-        const double COEF_DEPTH = 4 * (1 - g_timer.get_elapsed() / G_TL_SEC);
+        const double COEF_DEPTH = 4 * (1 - progress);
         const int MAX_DEPTH = COEF_DEPTH * (init_maze.width() + init_maze.height()) / 2;
         static vector<State> states[MAX_COEF_DEPTH * 80 + 10];
         rep(i, MAX_DEPTH)
@@ -756,10 +760,9 @@ public:
         auto eval = [&](const State& state)
         {
             int score = 0;
-            score += state.new_covers * 100;
-//             score += change_to_orig;
-            score -= 2 * state.orig_to_change * 100;
-            score -= 2 * state.change_to_change * 100;
+            score += 100 * state.new_covers;
+            score -= 200 * state.orig_to_change;
+            score -= 200 * state.change_to_change;
             return score;
         };
 
@@ -884,6 +887,11 @@ public:
             }
 END:
 
+//             if (best_covers > covers && changes > max_changes)
+//             {
+//                 fprintf(stderr, "%4d -> %4d, (%4d %4d) %4d %4d %4d %4d\n", best_covers, covers, changes, max_changes, state.new_covers, state.change_to_change, state.orig_to_change, state.change_to_orig);
+//             }
+
             if (changes <= max_changes)
             {
                 if (covers > best_covers)
@@ -891,10 +899,21 @@ END:
                     best_covers = covers;
                     best_result.maze = maze;
                     best_result.state = state;
+                    best_result.changes = changes;
 
 //                     fprintf(stderr, "%4d %4d %4d %4d\n", state.new_covers, state.change_to_change, state.orig_to_change, state.change_to_orig);
                 }
             }
+        }
+        if (best_covers > init_covers)
+        {
+            auto& state = best_result.state;
+            auto path = state.make_path();
+//             fprintf(stderr, "%4d -> %4d, (%4d %4d) (%4d %4d) %4d %4d %4d %4d\n", init_covers, best_covers, best_result.changes, max_changes, (int)path.size(), MAX_DEPTH, state.new_covers, state.change_to_change, state.orig_to_change, state.change_to_orig);
+
+#ifdef VIS
+            best_result.path = path;
+#endif
         }
 //         cerr << endl;
 
@@ -964,6 +983,9 @@ END:
                 {
                     //                 fprintf(stderr, "%4d (%4.2f): %4d -> %4d\n", try_i, g_timer.get_elapsed(), current_covers, next_covers);
                     current_maze = next_maze;
+#ifdef VIS
+                    save_image(make_filename(try_i), next_maze, start_maze, {result.path});
+#endif
                 }
             }
         }
@@ -1041,6 +1063,7 @@ public:
                 res.push_back(make_change(x, y, to_char(final_maze.get(x, y))));
             }
         }
+        dump(start_maze.list_borders().size());
         dump(res.size());
         assert(res.size() <= f);
 
