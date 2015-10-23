@@ -668,13 +668,9 @@ public:
             return s;
         }
 
+        int score;
         int eval() const
         {
-            int score = 0;
-            score += new_covers;
-//             score += change_to_orig;
-            score -= 2 * orig_to_change;
-            score -= 2 * change_to_change;
             return score;
         }
 
@@ -737,8 +733,8 @@ public:
         const int MAX_COEF_DEPTH = 4;
 
         const int BEAM_WIDTH = 50;
-        const int COEF_DEPTH = g_timer.get_elapsed() < G_TL_SEC * 0.5 ? 4 : 2;
-        const int MAX_DEPTH = COEF_DEPTH * max(init_maze.width(), init_maze.height());
+        const double COEF_DEPTH = 4 * (1 - g_timer.get_elapsed() / G_TL_SEC);
+        const int MAX_DEPTH = COEF_DEPTH * (init_maze.width() + init_maze.height()) / 2;
         static vector<State> states[MAX_COEF_DEPTH * 80 + 10];
         rep(i, MAX_DEPTH)
             states[i].clear();
@@ -756,6 +752,16 @@ public:
                 states[0].push_back(State(dir, !init_covered.get(nx, ny), 0, 0, 0, 0, Pos(nx, ny), &start_state));
             }
         }
+
+        auto eval = [&](const State& state)
+        {
+            int score = 0;
+            score += state.new_covers * 100;
+//             score += change_to_orig;
+            score -= 2 * state.orig_to_change * 100;
+            score -= 2 * state.change_to_change * 100;
+            return score;
+        };
 
         static vector<State> complete_states;
         complete_states.clear();
@@ -827,6 +833,8 @@ public:
                             else
                                 ++nstate.change_to_change;
                         }
+
+                        nstate.score = eval(nstate);
 
                         states[depth + 1].push_back(nstate);
                     }
