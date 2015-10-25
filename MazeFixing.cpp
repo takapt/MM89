@@ -723,7 +723,7 @@ public:
         int changes;
         vector<Pos> path;
     };
-    SearchNewPathResult search_new_path(const Maze& init_maze) const
+    SearchNewPathResult search_new_path(const Maze& init_maze, const double progress) const
     {
         const auto init_covered = init_maze.search_covered(borders);
         const int init_covers = init_covered.count();
@@ -733,8 +733,6 @@ public:
             if (start_maze.get(x, y) != init_maze.get(x, y))
                 ++init_changes;
         }
-
-        const double progress = g_timer.get_elapsed() / G_TL_SEC;
 
         const int MAX_COEF_DEPTH = 4;
 
@@ -860,14 +858,13 @@ public:
 
         SearchNewPathResult best_result;
         best_result.maze = init_maze;
+        best_result.changes = w * h;
         int best_covers = init_covers;
         for (auto& state : complete_states)
         {
             if (g_timer.get_elapsed() > G_TL_SEC)
                 break;
 
-//             auto& path = state.path;
-//             auto path = state.make_path();
             static vector<Pos> path;
             state.make_path(path);
             assert(path.size() >= 2);
@@ -887,14 +884,15 @@ public:
             int changes = 0;
             rep(y, h) rep(x, w)
             {
-                if (!maze.outside(x, y) && !covered.get(x, y))
-                    maze.set(x, y, start_maze.get(x, y));
+                if (!maze.outside(x, y))
+                {
+                    if (!covered.get(x, y))
+                        maze.set(x, y, start_maze.get(x, y));
 
-                if (start_maze.get(x, y) != maze.get(x, y))
-                    ++changes;
-
-                if (changes > max_changes)
-                    goto END;
+                    changes += start_maze.get(x, y) != maze.get(x, y);
+                    if (changes > max_changes)
+                        goto END;
+                }
             }
 END:
 
@@ -905,7 +903,12 @@ END:
 
             if (changes <= max_changes)
             {
-                if (covers > best_covers)
+                auto sc = [&](int covers, int changes)
+                {
+                    return covers - changes * changes * (1 - progress) / max_changes;
+                };
+//                 if (covers > best_covers)
+                if (sc(covers, changes) > sc(best_covers, best_result.changes))
                 {
                     best_covers = covers;
                     best_result.maze = maze;
@@ -916,16 +919,16 @@ END:
                 }
             }
         }
-        if (best_covers > init_covers)
-        {
-            auto& state = best_result.state;
-            auto path = state.make_path();
-//             fprintf(stderr, "%4d -> %4d, (%4d %4d) (%4d %4d) %4d %4d %4d %4d\n", init_covers, best_covers, best_result.changes, max_changes, (int)path.size(), MAX_DEPTH, state.new_covers, state.change_to_change, state.orig_to_change, state.change_to_orig);
-
-#ifdef VIS
-            best_result.path = path;
-#endif
-        }
+//         if (best_covers > init_covers)
+//         {
+//             auto& state = best_result.state;
+//             auto path = state.make_path();
+// //             fprintf(stderr, "%4d -> %4d, (%4d %4d) (%4d %4d) %4d %4d %4d %4d\n", init_covers, best_covers, best_result.changes, max_changes, (int)path.size(), MAX_DEPTH, state.new_covers, state.change_to_change, state.orig_to_change, state.change_to_orig);
+//
+// #ifdef VIS
+//             best_result.path = path;
+// #endif
+//         }
 //         cerr << endl;
 
         return best_result;
@@ -937,16 +940,12 @@ END:
         save_image(make_filename(-1), start_maze, start_maze, {});
 #endif
 
-//         Maze current_maze = start_maze;
-//         BoolBoard current_covered = start_maze.search_covered(borders);
-//         int current_covers = current_covered.count();
-
         const int MAX_MAZES = min(16, 2 * 80 * 80 / (w * h));
         vector<Maze> current_mazes(MAX_MAZES, start_maze);
 
 
 #ifndef USE_TIMER
-        const int MAX_TRIES = 50;
+        const int MAX_TRIES = 200;
 #endif
 
         double last_halving_progress = 0;
@@ -986,7 +985,7 @@ END:
 
             for (auto& current_maze : current_mazes)
             {
-                SearchNewPathResult result = search_new_path(current_maze);
+                SearchNewPathResult result = search_new_path(current_maze, progress);
                 auto& next_maze = result.maze;
                 auto next_coverd = next_maze.search_covered(borders);
                 int next_covers = next_coverd.count();
