@@ -126,7 +126,7 @@ Timer g_timer;
 #ifdef LOCAL
 #define USE_TIMER
 #ifdef USE_TIMER
-const double G_TL_SEC = 9.5 * 2;
+const double G_TL_SEC = 9.5;
 #else
 const double G_TL_SEC = 1e9;
 #endif
@@ -1090,7 +1090,7 @@ END:
         save_image(make_filename(-1), start_maze, start_maze, start_maze, {DrawPaths({}, 0, 0, 0)});
 #endif
 
-        const int MAX_MAZES = min(16, 2 * 80 * 80 / (w * h)) * 2;
+        const int MAX_MAZES = min(16, 2 * 80 * 80 / (w * h));
         vector<Maze> current_mazes(MAX_MAZES, start_maze);
 
 
