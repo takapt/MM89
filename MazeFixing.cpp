@@ -393,6 +393,20 @@ public:
         return c;
     }
 
+    void revert_waste_changes(const Maze& start_maze, const BoolBoard& covered)
+    {
+        rep(y, h) rep(x, w)
+        {
+            if (!covered.get(x, y) && get(x, y) != start_maze.get(x, y))
+                set(x, y, start_maze.get(x, y));
+        }
+    }
+    void revert_waste_changes(const Maze& start_maze)
+    {
+        BoolBoard covered = search_covered(list_borders());
+        revert_waste_changes(start_maze, covered);
+    }
+
     int count_covers() const
     {
         BoolBoard f = search_covered(list_borders());
@@ -750,6 +764,13 @@ public:
                 }
             }
         }
+
+        inside = 0;
+        rep(y, h) rep(x, w)
+        {
+            if (!start_maze.outside(x, y))
+                ++inside;
+        }
     }
 
     struct State
@@ -841,24 +862,20 @@ public:
         State state;
         int changes;
         vector<Pos> path;
+        Pos start_pos;
 
 #ifdef VIS
         vector<DrawPaths> draw_paths;
 #endif
     };
-    SearchNewPathResult search_new_path(const Maze& init_maze, const double progress) const
+    SearchNewPathResult search_new_path(const Maze& init_maze, const double progress, const deque<Pos>& taboo) const
     {
         const auto init_covered = init_maze.search_covered(borders);
         const int init_covers = init_covered.count();
         int init_changes = 0;
-        int inside = 0;
         rep(y, h) rep(x, w)
-        {
             if (start_maze.get(x, y) != init_maze.get(x, y))
                 ++init_changes;
-            if (!start_maze.outside(x, y))
-                ++inside;
-        }
 
         const int MAX_COEF_DEPTH = 3;
 
@@ -871,7 +888,22 @@ public:
         rep(i, MAX_DEPTH)
             states[i].clear();
 
-        const Pos start_pos = borders[g_rand.next_int(borders.size())];
+        set<Pos> tab(all(taboo));
+        vector<Pos> cand;
+        for (const Pos& p : borders)
+        {
+            if (!tab.count(p))
+            {
+                cand.push_back(p);
+            }
+        }
+        if (cand.empty())
+        {
+            cand.push_back(borders[0]);
+        }
+
+        const Pos start_pos = cand[g_rand.next_int(cand.size())];
+//         const Pos start_pos = borders[g_rand.next_int(borders.size())];
         State start_state;
         start_state.pos = start_pos;
         start_state.prev = nullptr;
@@ -1012,7 +1044,9 @@ public:
         SearchNewPathResult best_result;
         best_result.maze = init_maze;
         best_result.changes = w * h;
-        int best_covers = init_covers;
+        best_result.state = start_state;
+        best_result.start_pos = start_pos;
+        int best_covers = 0;
         for (auto& state : complete_states)
         {
             if (g_timer.get_elapsed() > G_TL_SEC)
@@ -1109,343 +1143,44 @@ END:
         return best_result;
     }
 
-
-    struct EndState
-    {
-        int new_covers;
-        int orig_to_change;
-        int change_to_change;
-        int change_to_orig;
-        int everys;
-
-        deque<Pos> path;
-
-        template <typename T>
-        EndState(const T& other) :
-            new_covers(other.new_covers),
-            orig_to_change(other.orig_to_change),
-            change_to_change(other.change_to_change),
-            change_to_orig(other.change_to_orig),
-            everys(other.everys)
-        {
-        }
-
-        EndState(int new_covers, int orig_to_change, int change_to_change, int change_to_orig, int everys, const deque<Pos>&& path) :
-            new_covers(new_covers),
-            orig_to_change(orig_to_change),
-            change_to_change(change_to_change),
-            change_to_orig(change_to_orig),
-            everys(everys),
-            path(path)
-        {
-        }
-
-        EndState(){}
-
-        int eval() const
-        {
-            int score = 0;
-            score += new_covers;
-            //                 score += change_to_orig;
-            score -= 2 * orig_to_change;
-            score -= 2 * change_to_change;
-            return score;
-        }
-
-        bool operator<(const EndState& other) const
-        {
-            return eval() > other.eval();
-        }
-    };
-    struct EndSearchNewPathResult
-    {
-        Maze maze;
-        EndState state;
-    };
-    EndSearchNewPathResult search_new_path_end(const Maze& init_maze) const
-    {
-        const auto init_covered = init_maze.search_covered(borders);
-        const int init_covers = init_covered.count();
-        int init_changes = 0;
-        rep(y, h) rep(x, w)
-        {
-            if (start_maze.get(x, y) != init_maze.get(x, y))
-                ++init_changes;
-        }
-
-
-        const int MAX_COEF_DEPTH = 4;
-
-        const int BEAM_WIDTH = 50;
-        const int COEF_DEPTH = g_timer.get_elapsed() < G_TL_SEC * 0.5 ? 4 : 2;
-        const int MAX_DEPTH = COEF_DEPTH * max(init_maze.width(), init_maze.height());
-        static vector<EndState> states[MAX_COEF_DEPTH * 80 + 10];
-        rep(i, MAX_DEPTH)
-            states[i].clear();
-
-        vector<Pos> not_covered;
-        rep(y, h) rep(x, w)
-            if (!init_maze.outside(x, y) && !init_covered.get(x, y))
-                not_covered.push_back(Pos(x, y));
-        const Pos start_pos = not_covered[g_rand.next_int(not_covered.size())];
-        rep(dir, 4)
-        {
-            int x = start_pos.x;
-            int y = start_pos.y;
-            int nx = start_pos.x + DX[dir];
-            int ny = start_pos.y + DY[dir];
-            assert(in_rect(nx, ny, w, h));
-
-            int new_covers = (!init_maze.outside(x, y) && !init_covered.get(x, y))
-               + (!init_maze.outside(nx, ny) && !init_covered.get(nx, ny));
-            states[0].push_back(EndState(new_covers, 0, 0, 0, 0, {start_pos, Pos(nx, ny)}));
-        }
-
-        if (false)
-        {
-        const Pos start_pos = borders[g_rand.next_int(borders.size())];
-        rep(dir, 4)
-        {
-            int nx = start_pos.x + DX[dir];
-            int ny = start_pos.y + DY[dir];
-            if (in_rect(nx, ny, w, h) && !init_maze.outside(nx, ny))
-            {
-//                 states[0].push_back(EndState(!init_covered.get(nx, ny), 0, 0, 0, 0, {start_pos, Pos(nx, ny)}));
-                states[0].push_back(EndState(!init_covered.get(nx, ny), 0, 0, 0, 0, {Pos(nx, ny), start_pos}));
-            }
-        }
-        }
-
-        static vector<EndState> complete_states;
-        complete_states.clear();
-
-        rep(depth, MAX_DEPTH - 1)
-        {
-            if (g_timer.get_elapsed() > G_TL_SEC)
-                break;
-
-            sort(all(states[depth]));
-            if (states[depth].size() > BEAM_WIDTH)
-                states[depth].erase(states[depth].begin() + BEAM_WIDTH, states[depth].end());
-
-            for (auto& state : states[depth])
-            {
-                const auto& path = state.path;
-
-                struct Move
-                {
-                    Move(const Pos& pos, const EndState& state) :
-                        pos(pos),
-                        new_covers(state.new_covers),
-                        orig_to_change(state.orig_to_change),
-                        change_to_change(state.change_to_change),
-                        change_to_orig(state.change_to_orig),
-                        everys(state.everys)
-                    {
-                    }
-
-                    Pos pos;
-
-                    int new_covers;
-                    int orig_to_change;
-                    int change_to_change;
-                    int change_to_orig;
-                    int everys;
-
-                    int eval() const
-                    {
-                        int score = 0;
-                        score += new_covers;
-                        //                 score += change_to_orig;
-                        score -= 2 * orig_to_change;
-                        score -= 2 * change_to_change;
-                        return score;
-                    }
-                };
-
-
-                auto generate_moves = [&](int cur_x, int cur_y, int cur_dir, int rev_sign, int fix_dir)
-                {
-                    assert(in_rect(cur_x, cur_y, w, h));
-
-                    vector<int> dirs;
-                    rep(ndir, 4)
-                    {
-                        const int nx = cur_x + DX[ndir];
-                        const int ny = cur_y + DY[ndir];
-                        if ((ndir + fix_dir + 2 + 4) % 4 != cur_dir &&
-                            (init_maze.outside(nx, ny) || find(path.begin(), path.end(), Pos(nx, ny)) == path.end()))
-                        {
-                            dirs.push_back(ndir);
-                        }
-                    }
-
-                    vector<Move> moves;
-                    for (int ndir : dirs)
-                    {
-                        const int nx = cur_x + DX[ndir];
-                        const int ny = cur_y + DY[ndir];
-                        assert(in_rect(nx, ny, w, h));
-
-                        if (init_maze.outside(nx, ny))
-                        {
-                            if (state.new_covers >= 1)
-                                moves.push_back(Move(Pos(nx, ny), state));
-                            continue;
-                        }
-
-                        {
-                            int cell_to = (rev_sign * (ndir - cur_dir) + fix_dir + 4) % 4;
-                            bool need_change = init_maze.get(cur_x, cur_y) != EVERY && cell_to != init_maze.get(cur_x, cur_y);
-
-                            Move move(Pos(nx, ny), state);
-
-                            if (!init_covered.get(nx, ny))
-                                ++move.new_covers;
-
-                            if (init_maze.get(cur_x, cur_y) == EVERY)
-                                ++move.everys;
-
-                            if (need_change)
-                            {
-                                if (cell_to == start_maze.get(cur_x, cur_y))
-                                    ++move.change_to_orig;
-                                else if (init_maze.get(cur_x, cur_y) == start_maze.get(cur_x, cur_y))
-                                    ++move.orig_to_change;
-                                else
-                                    ++move.change_to_change;
-                            }
-
-                            moves.push_back(move);
-                        }
-                    }
-                    return moves;
-                };
-                vector<Move> front_moves;
-                if (!start_maze.outside(path.back().x, path.back().y))
-                    front_moves = generate_moves(path.back().x, path.back().y, (path.end() - 2)->dir(path.back()), +1, 0);
-
-                vector<Move> back_moves;
-                if (!start_maze.outside(path.front().x, path.front().y))
-                    back_moves = generate_moves(path.front().x, path.front().y, path.front().dir(path[1]), -1, 2);
-
-                auto eval_moves = [](const vector<Move>& moves)
-                {
-                    int score = -1;
-                    for (auto& m : moves)
-                        upmax(score, m.eval());
-                    return score;
-                };
-
-                if (eval_moves(front_moves) >= eval_moves(back_moves))
-                {
-                    for (auto& move : front_moves)
-                    {
-                        EndState nstate(move);
-                        nstate.path = state.path;
-                        nstate.path.push_back(move.pos);
-                        if (start_maze.outside(nstate.path.front().x, nstate.path.front().y) && start_maze.outside(nstate.path.back().x, nstate.path.back().y))
-                            complete_states.push_back(nstate);
-                        else
-                            states[depth + 1].push_back(nstate);
-                    }
-                }
-                else
-                {
-                    for (auto& move : back_moves)
-                    {
-                        EndState nstate(move);
-                        nstate.path = state.path;
-                        nstate.path.push_front(move.pos);
-                        if (start_maze.outside(nstate.path.front().x, nstate.path.front().y) && start_maze.outside(nstate.path.back().x, nstate.path.back().y))
-                            complete_states.push_back(nstate);
-                        else
-                            states[depth + 1].push_back(nstate);
-                    }
-                }
-            }
-        }
-
-        EndSearchNewPathResult best_result;
-        best_result.maze = init_maze;
-        int best_covers = init_covers;
-        for (auto& state : complete_states)
-        {
-            if (g_timer.get_elapsed() > G_TL_SEC)
-                break;
-
-            auto& path = state.path;
-            assert(path.size() >= 2);
-
-            Maze maze = init_maze;
-            for (int i = 1; i < (int)path.size() - 1; ++i)
-            {
-                int cur_dir = path[i - 1].dir(path[i]);
-                int need_cell = (path[i].dir(path[i + 1]) - cur_dir + 4) % 4;
-                int x = path[i].x, y = path[i].y;
-                if (maze.get(x, y) != EVERY)
-                    maze.set(x, y, need_cell);
-            }
-
-            auto covered = maze.search_covered(borders);
-            int covers = covered.count();
-            int changes = 0;
-            rep(y, h) rep(x, w)
-            {
-                if (!maze.outside(x, y) && !covered.get(x, y))
-                    maze.set(x, y, start_maze.get(x, y));
-
-                if (start_maze.get(x, y) != maze.get(x, y))
-                    ++changes;
-
-                if (changes > max_changes)
-                    goto END;
-            }
-END:
-
-            if (changes <= max_changes)
-            {
-                double score = state.eval();
-                if (covers > best_covers)
-                {
-                    best_covers = covers;
-                    best_result.maze = maze;
-                    best_result.state = state;
-                }
-            }
-        }
-
-        return best_result;
-    }
-
-
-
     Maze solve()
     {
 #ifdef VIS
         save_image(make_filename(-1), start_maze, start_maze, start_maze, {DrawPaths({}, 0, 0, 0)});
 #endif
 
-        Maze best_maze;
-        int best_covers = -1;
+//         Maze best_maze;
+//         int best_covers = -1;
+
+//         Maze current_maze = start_maze;
 
         const int MAX_MAZES = min(8, 1 * 80 * 80 / (w * h));
         vector<Maze> current_mazes(MAX_MAZES, start_maze);
+        vector<Maze> best_mazes(MAX_MAZES);
+        vector<int> best_coverss(MAX_MAZES, -1);
+        vector<double> last_progresses(MAX_MAZES, 0);
+        vector<int> last_try_is(MAX_MAZES, 0);
+        vector<deque<Pos>> taboos(MAX_MAZES);
+        const int MAX_TABOO = borders.size() / 4;
 
-
-#ifndef USE_TIMER
-        const int MAX_TRIES = 568;
-#endif
+        map<Pos, int> start_value;
+        for (auto& p : borders)
+            start_value[p] = inside / 5;
 
         double last_halving_progress = 0;
+
+#ifndef USE_TIMER
+        const int MAX_TRIES = 300;
+#endif
+
         int try_i;
         for (try_i = 0;
 #ifdef USE_TIMER
-                g_timer.get_elapsed() < G_TL_SEC;
+            g_timer.get_elapsed() < G_TL_SEC;
 #else
-                try_i < MAX_TRIES;
+            try_i < MAX_TRIES;
 #endif
-                ++try_i)
+            ++try_i)
         {
 #ifdef USE_TIMER
             double progress = g_timer.get_elapsed() / G_TL_SEC;
@@ -1457,36 +1192,100 @@ END:
             {
                 vector<pair<int, int>> order;
                 rep(i, current_mazes.size())
-                    order.push_back(make_pair(current_mazes[i].search_covered(borders).count(), i));
+                    order.push_back(make_pair(best_coverss[i], i));
                 sort(rall(order));
-//                 dump(order);
+                //                 dump(order);
 
                 const int take = current_mazes.size() / 2;
                 vector<Maze> next_mazes(take);
+                vector<Maze> nbest_mazes(take);
+                vector<int> nbest_coverss(take);
+                vector<double> nlast_progresses(take);
+                vector<int> nlast_try_is(take);
+                vector<deque<Pos>> ntaboos(take);
                 rep(i, take)
-                    next_mazes[i] = current_mazes[order[i].second];
+                {
+                    int j = order[i].second;
+                    next_mazes[i] = current_mazes[j];
+                    nbest_mazes[i] = best_mazes[j];
+                    nbest_coverss[i] = best_coverss[j];
+                    nlast_progresses[i] = last_progresses[j];
+                    nlast_try_is[i] = last_try_is[j];
+                    ntaboos[i] = taboos[j];
+                }
                 current_mazes = std::move(next_mazes);
+                best_mazes = std::move(nbest_mazes);
+                best_coverss = std::move(nbest_coverss);
+                last_progresses = std::move(nlast_progresses);
+                last_try_is = std::move(nlast_try_is);
+                taboos = std::move(ntaboos);
 
                 last_halving_progress = progress;
 
-//                 dump(current_mazes.size());
+                //                 dump(current_mazes.size());
             }
 
-            for (auto& current_maze : current_mazes)
+//             for (auto& current_maze : current_mazes)
+            rep(maze_i, current_mazes.size())
             {
-                SearchNewPathResult result = search_new_path(current_maze, progress);
+                auto& current_maze = current_mazes[maze_i];
+                auto& best_maze = best_mazes[maze_i];
+                auto& best_covers = best_coverss[maze_i];
+                auto& last_progress = last_progresses[maze_i];
+                auto& last_try_i = last_try_is[maze_i];
+                auto& taboo = taboos[maze_i];
+
+//                 if (progress - last_progress > 0.1 ||
+//                     (progress - last_progress > 0.03 && (double)current_maze.count_changes(start_maze) / max_changes > 0.95))
+                if (w * h * max_changes < 150000)
+                {
+                    const int aneal_interval = 100;//borders.size() * 0.3;
+                    if ((try_i - last_try_i > aneal_interval && (double)current_maze.count_changes(start_maze) / max_changes > 0.95))
+                    {
+//                                             fprintf(stderr, "\t\t\t\t\t%4d (%4.2f): %4d, %4d\n", try_i, g_timer.get_elapsed(), current_maze.count_changes(start_maze), current_maze.count_covers());
+                        auto covered = current_maze.search_covered(borders);
+                        vector<Pos> covered_pos;
+                        rep(y, h) rep(x, w)
+                            if (covered.get(x, y) && current_maze.get(x, y) != start_maze.get(x, y))
+                                covered_pos.push_back(Pos(x, y));
+
+                        if (!covered_pos.empty())
+                        {
+                            Maze next_maze = best_maze;
+                            rep(i, 1)
+                            {
+                                Pos p = covered_pos[g_rand.next_int(covered_pos.size())];
+                                next_maze.set(p.x, p.y, start_maze.get(p.x, p.y));
+                            }
+                            next_maze.revert_waste_changes(start_maze);
+
+                            current_maze = next_maze;
+                        }
+                        last_progress = progress;
+                        last_try_i = try_i;
+                    }
+                }
+
+                SearchNewPathResult result = search_new_path(current_maze, progress, taboo);
                 auto& next_maze = result.maze;
                 auto next_coverd = next_maze.search_covered(borders);
                 int next_covers = next_coverd.count();
+
+                const int current_covers = current_maze.count_covers();
+
+                const Pos start_pos = result.start_pos;
+                taboo.push_back(start_pos);
+                if (taboo.size() > MAX_TABOO)
+                    taboo.pop_front();
+
                 auto sc = [&](int covers, int changes)
                 {
                     return covers - changes * changes * (1 - progress) / max_changes;
                 };
-//                 if (next_covers > current_maze.search_covered(borders).count())
+                //                 if (next_covers > current_maze.search_covered(borders).count())
                 if (sc(next_covers, next_maze.count_changes(start_maze)) > sc(current_maze.count_covers(), current_maze.count_changes(start_maze)))
                 {
-//                     fprintf(stderr, "%6d %6d\n", calls, waste_calls);
-                    //                 fprintf(stderr, "%4d (%4.2f): %4d -> %4d\n", try_i, g_timer.get_elapsed(), current_covers, next_covers);
+//                     fprintf(stderr, "%4d (%4.2f): %4d, %4d -> %4d\n", try_i, g_timer.get_elapsed(), current_maze.count_changes(start_maze), current_maze.count_covers(), next_covers);
 #ifdef VIS
                     save_image(make_filename(try_i), next_maze, current_maze, start_maze, result.draw_paths);
 #endif
@@ -1496,17 +1295,19 @@ END:
                 {
                     best_covers = next_covers;
                     best_maze = next_maze;
+                    last_progress = progress;
+                    last_try_i = try_i;
                 }
             }
         }
         dump(try_i);
 
-        best_maze = use_up(best_maze);
-        int covers = best_maze.count_covers();
-        for (auto& maze : current_mazes)
+        int best_covers = -1;
+        Maze best_maze;
+        for (auto maze : best_mazes)
         {
             maze = use_up(maze);
-            int covers = maze.search_covered(borders).count();
+            int covers = maze.count_covers();
             if (covers > best_covers)
             {
                 best_covers = covers;
@@ -1551,6 +1352,7 @@ private:
     const int w, h;
 
     int dist_to_outside[80][80];
+    int inside;
 };
 
 class MazeFixing
