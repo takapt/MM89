@@ -349,6 +349,8 @@ private:
     bool f[80][80];
 };
 
+int calls;
+int waste_calls;
 class Maze
 {
 public:
@@ -383,6 +385,23 @@ public:
         return get(x, y) == OUT;
     }
 
+    int count_changes(const Maze& ori_maze) const
+    {
+        int c = 0;
+        rep(y, h) rep(x, w)
+            c += get(x, y) != ori_maze.get(x, y);
+        return c;
+    }
+
+    int count_covers() const
+    {
+        BoolBoard f = search_covered(list_borders());
+        int c = 0;
+        rep(y, h) rep(x, w)
+            c += f.get(x, y);
+        return c;
+    }
+
     bool border(int x, int y) const
     {
         if (!outside(x, y))
@@ -408,6 +427,8 @@ public:
 
     BoolBoard search_covered(const vector<Pos>& borders) const
     {
+//         calls = 0;
+//         waste_calls = 0;
         BoolBoard visited(w, h);
         BoolBoard covered(w, h);
         for (auto& start : borders)
@@ -480,6 +501,10 @@ private:
 
         if (any_exit)
             covered.set(x, y, true);
+
+//         ++calls;
+//         if (!any_exit)
+//             ++waste_calls;
 
         return any_exit;
     }
@@ -1090,7 +1115,10 @@ END:
         save_image(make_filename(-1), start_maze, start_maze, start_maze, {DrawPaths({}, 0, 0, 0)});
 #endif
 
-        const int MAX_MAZES = min(16, 2 * 80 * 80 / (w * h));
+        Maze best_maze;
+        int best_covers = -1;
+
+        const int MAX_MAZES = 1;min(16, 2 * 80 * 80 / (w * h));
         vector<Maze> current_mazes(MAX_MAZES, start_maze);
 
 
@@ -1139,20 +1167,31 @@ END:
                 auto& next_maze = result.maze;
                 auto next_coverd = next_maze.search_covered(borders);
                 int next_covers = next_coverd.count();
-                if (next_covers > current_maze.search_covered(borders).count())
+                auto sc = [&](int covers, int changes)
                 {
+                    return covers - changes * changes * (1 - progress) / max_changes;
+                };
+//                 if (next_covers > current_maze.search_covered(borders).count())
+                if (sc(next_covers, next_maze.count_changes(start_maze)) > sc(current_maze.count_covers(), current_maze.count_changes(start_maze)))
+                {
+//                     fprintf(stderr, "%6d %6d\n", calls, waste_calls);
                     //                 fprintf(stderr, "%4d (%4.2f): %4d -> %4d\n", try_i, g_timer.get_elapsed(), current_covers, next_covers);
 #ifdef VIS
                     save_image(make_filename(try_i), next_maze, current_maze, start_maze, result.draw_paths);
 #endif
                     current_maze = next_maze;
                 }
+                if (next_covers > best_covers)
+                {
+                    best_covers = next_covers;
+                    best_maze = next_maze;
+                }
             }
         }
         dump(try_i);
 
-        int best_covers = -1;
-        Maze best_maze;
+        best_maze = use_up(best_maze);
+        int covers = best_maze.count_covers();
         for (auto& maze : current_mazes)
         {
             maze = use_up(maze);
