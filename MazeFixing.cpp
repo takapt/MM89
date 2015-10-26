@@ -1109,6 +1109,317 @@ END:
         return best_result;
     }
 
+
+    struct EndState
+    {
+        int new_covers;
+        int orig_to_change;
+        int change_to_change;
+        int change_to_orig;
+        int everys;
+
+        deque<Pos> path;
+
+        template <typename T>
+        EndState(const T& other) :
+            new_covers(other.new_covers),
+            orig_to_change(other.orig_to_change),
+            change_to_change(other.change_to_change),
+            change_to_orig(other.change_to_orig),
+            everys(other.everys)
+        {
+        }
+
+        EndState(int new_covers, int orig_to_change, int change_to_change, int change_to_orig, int everys, const deque<Pos>&& path) :
+            new_covers(new_covers),
+            orig_to_change(orig_to_change),
+            change_to_change(change_to_change),
+            change_to_orig(change_to_orig),
+            everys(everys),
+            path(path)
+        {
+        }
+
+        EndState(){}
+
+        int eval() const
+        {
+            int score = 0;
+            score += new_covers;
+            //                 score += change_to_orig;
+            score -= 2 * orig_to_change;
+            score -= 2 * change_to_change;
+            return score;
+        }
+
+        bool operator<(const EndState& other) const
+        {
+            return eval() > other.eval();
+        }
+    };
+    struct EndSearchNewPathResult
+    {
+        Maze maze;
+        EndState state;
+    };
+    EndSearchNewPathResult search_new_path_end(const Maze& init_maze) const
+    {
+        const auto init_covered = init_maze.search_covered(borders);
+        const int init_covers = init_covered.count();
+        int init_changes = 0;
+        rep(y, h) rep(x, w)
+        {
+            if (start_maze.get(x, y) != init_maze.get(x, y))
+                ++init_changes;
+        }
+
+
+        const int MAX_COEF_DEPTH = 4;
+
+        const int BEAM_WIDTH = 50;
+        const int COEF_DEPTH = g_timer.get_elapsed() < G_TL_SEC * 0.5 ? 4 : 2;
+        const int MAX_DEPTH = COEF_DEPTH * max(init_maze.width(), init_maze.height());
+        static vector<EndState> states[MAX_COEF_DEPTH * 80 + 10];
+        rep(i, MAX_DEPTH)
+            states[i].clear();
+
+        vector<Pos> not_covered;
+        rep(y, h) rep(x, w)
+            if (!init_maze.outside(x, y) && !init_covered.get(x, y))
+                not_covered.push_back(Pos(x, y));
+        const Pos start_pos = not_covered[g_rand.next_int(not_covered.size())];
+        rep(dir, 4)
+        {
+            int x = start_pos.x;
+            int y = start_pos.y;
+            int nx = start_pos.x + DX[dir];
+            int ny = start_pos.y + DY[dir];
+            assert(in_rect(nx, ny, w, h));
+
+            int new_covers = (!init_maze.outside(x, y) && !init_covered.get(x, y))
+               + (!init_maze.outside(nx, ny) && !init_covered.get(nx, ny));
+            states[0].push_back(EndState(new_covers, 0, 0, 0, 0, {start_pos, Pos(nx, ny)}));
+        }
+
+        if (false)
+        {
+        const Pos start_pos = borders[g_rand.next_int(borders.size())];
+        rep(dir, 4)
+        {
+            int nx = start_pos.x + DX[dir];
+            int ny = start_pos.y + DY[dir];
+            if (in_rect(nx, ny, w, h) && !init_maze.outside(nx, ny))
+            {
+//                 states[0].push_back(EndState(!init_covered.get(nx, ny), 0, 0, 0, 0, {start_pos, Pos(nx, ny)}));
+                states[0].push_back(EndState(!init_covered.get(nx, ny), 0, 0, 0, 0, {Pos(nx, ny), start_pos}));
+            }
+        }
+        }
+
+        static vector<EndState> complete_states;
+        complete_states.clear();
+
+        rep(depth, MAX_DEPTH - 1)
+        {
+            if (g_timer.get_elapsed() > G_TL_SEC)
+                break;
+
+            sort(all(states[depth]));
+            if (states[depth].size() > BEAM_WIDTH)
+                states[depth].erase(states[depth].begin() + BEAM_WIDTH, states[depth].end());
+
+            for (auto& state : states[depth])
+            {
+                const auto& path = state.path;
+
+                struct Move
+                {
+                    Move(const Pos& pos, const EndState& state) :
+                        pos(pos),
+                        new_covers(state.new_covers),
+                        orig_to_change(state.orig_to_change),
+                        change_to_change(state.change_to_change),
+                        change_to_orig(state.change_to_orig),
+                        everys(state.everys)
+                    {
+                    }
+
+                    Pos pos;
+
+                    int new_covers;
+                    int orig_to_change;
+                    int change_to_change;
+                    int change_to_orig;
+                    int everys;
+
+                    int eval() const
+                    {
+                        int score = 0;
+                        score += new_covers;
+                        //                 score += change_to_orig;
+                        score -= 2 * orig_to_change;
+                        score -= 2 * change_to_change;
+                        return score;
+                    }
+                };
+
+
+                auto generate_moves = [&](int cur_x, int cur_y, int cur_dir, int rev_sign, int fix_dir)
+                {
+                    assert(in_rect(cur_x, cur_y, w, h));
+
+                    vector<int> dirs;
+                    rep(ndir, 4)
+                    {
+                        const int nx = cur_x + DX[ndir];
+                        const int ny = cur_y + DY[ndir];
+                        if ((ndir + fix_dir + 2 + 4) % 4 != cur_dir &&
+                            (init_maze.outside(nx, ny) || find(path.begin(), path.end(), Pos(nx, ny)) == path.end()))
+                        {
+                            dirs.push_back(ndir);
+                        }
+                    }
+
+                    vector<Move> moves;
+                    for (int ndir : dirs)
+                    {
+                        const int nx = cur_x + DX[ndir];
+                        const int ny = cur_y + DY[ndir];
+                        assert(in_rect(nx, ny, w, h));
+
+                        if (init_maze.outside(nx, ny))
+                        {
+                            if (state.new_covers >= 1)
+                                moves.push_back(Move(Pos(nx, ny), state));
+                            continue;
+                        }
+
+                        {
+                            int cell_to = (rev_sign * (ndir - cur_dir) + fix_dir + 4) % 4;
+                            bool need_change = init_maze.get(cur_x, cur_y) != EVERY && cell_to != init_maze.get(cur_x, cur_y);
+
+                            Move move(Pos(nx, ny), state);
+
+                            if (!init_covered.get(nx, ny))
+                                ++move.new_covers;
+
+                            if (init_maze.get(cur_x, cur_y) == EVERY)
+                                ++move.everys;
+
+                            if (need_change)
+                            {
+                                if (cell_to == start_maze.get(cur_x, cur_y))
+                                    ++move.change_to_orig;
+                                else if (init_maze.get(cur_x, cur_y) == start_maze.get(cur_x, cur_y))
+                                    ++move.orig_to_change;
+                                else
+                                    ++move.change_to_change;
+                            }
+
+                            moves.push_back(move);
+                        }
+                    }
+                    return moves;
+                };
+                vector<Move> front_moves;
+                if (!start_maze.outside(path.back().x, path.back().y))
+                    front_moves = generate_moves(path.back().x, path.back().y, (path.end() - 2)->dir(path.back()), +1, 0);
+
+                vector<Move> back_moves;
+                if (!start_maze.outside(path.front().x, path.front().y))
+                    back_moves = generate_moves(path.front().x, path.front().y, path.front().dir(path[1]), -1, 2);
+
+                auto eval_moves = [](const vector<Move>& moves)
+                {
+                    int score = -1;
+                    for (auto& m : moves)
+                        upmax(score, m.eval());
+                    return score;
+                };
+
+                if (eval_moves(front_moves) >= eval_moves(back_moves))
+                {
+                    for (auto& move : front_moves)
+                    {
+                        EndState nstate(move);
+                        nstate.path = state.path;
+                        nstate.path.push_back(move.pos);
+                        if (start_maze.outside(nstate.path.front().x, nstate.path.front().y) && start_maze.outside(nstate.path.back().x, nstate.path.back().y))
+                            complete_states.push_back(nstate);
+                        else
+                            states[depth + 1].push_back(nstate);
+                    }
+                }
+                else
+                {
+                    for (auto& move : back_moves)
+                    {
+                        EndState nstate(move);
+                        nstate.path = state.path;
+                        nstate.path.push_front(move.pos);
+                        if (start_maze.outside(nstate.path.front().x, nstate.path.front().y) && start_maze.outside(nstate.path.back().x, nstate.path.back().y))
+                            complete_states.push_back(nstate);
+                        else
+                            states[depth + 1].push_back(nstate);
+                    }
+                }
+            }
+        }
+
+        EndSearchNewPathResult best_result;
+        best_result.maze = init_maze;
+        int best_covers = init_covers;
+        for (auto& state : complete_states)
+        {
+            if (g_timer.get_elapsed() > G_TL_SEC)
+                break;
+
+            auto& path = state.path;
+            assert(path.size() >= 2);
+
+            Maze maze = init_maze;
+            for (int i = 1; i < (int)path.size() - 1; ++i)
+            {
+                int cur_dir = path[i - 1].dir(path[i]);
+                int need_cell = (path[i].dir(path[i + 1]) - cur_dir + 4) % 4;
+                int x = path[i].x, y = path[i].y;
+                if (maze.get(x, y) != EVERY)
+                    maze.set(x, y, need_cell);
+            }
+
+            auto covered = maze.search_covered(borders);
+            int covers = covered.count();
+            int changes = 0;
+            rep(y, h) rep(x, w)
+            {
+                if (!maze.outside(x, y) && !covered.get(x, y))
+                    maze.set(x, y, start_maze.get(x, y));
+
+                if (start_maze.get(x, y) != maze.get(x, y))
+                    ++changes;
+
+                if (changes > max_changes)
+                    goto END;
+            }
+END:
+
+            if (changes <= max_changes)
+            {
+                double score = state.eval();
+                if (covers > best_covers)
+                {
+                    best_covers = covers;
+                    best_result.maze = maze;
+                    best_result.state = state;
+                }
+            }
+        }
+
+        return best_result;
+    }
+
+
+
     Maze solve()
     {
 #ifdef VIS
@@ -1118,7 +1429,7 @@ END:
         Maze best_maze;
         int best_covers = -1;
 
-        const int MAX_MAZES = 1;min(16, 2 * 80 * 80 / (w * h));
+        const int MAX_MAZES = min(8, 1 * 80 * 80 / (w * h));
         vector<Maze> current_mazes(MAX_MAZES, start_maze);
 
 
